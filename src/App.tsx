@@ -356,6 +356,8 @@ function App() {
           </div>
         </header>
 
+        {activeView === 'monthlyAssistant' && <HomeManual />}
+
         <section className="summary-grid">
           <div className="summary-card">
             <span>公式主表</span>
@@ -594,6 +596,57 @@ function CountCheck({ label, actual, expected }: { label: string; actual: number
         {actual}/{expected}
       </strong>
     </div>
+  );
+}
+
+function HomeManual() {
+  return (
+    <section className="manual-panel">
+      <div className="manual-title">
+        <Info size={18} />
+        <div>
+          <h2>使用说明书</h2>
+          <span>先按月处理公式滚动；年度新办法出来后，再走年度版本和迁移任务。</span>
+        </div>
+      </div>
+      <div className="manual-grid">
+        <article>
+          <strong>每月配置下月公式</strong>
+          <ol>
+            <li>在顶部选择“维护月份”和“目标月份”。</li>
+            <li>点击“生成下月建议”，系统只滚动月份、n/n-1 和统计时间口径。</li>
+            <li>逐条查看建议公式、修改点摘要、公式含义和人工确认项。</li>
+            <li>确认无误后点“采纳到台账”，建议公式会写入目标月份变更记录。</li>
+          </ol>
+        </article>
+        <article>
+          <strong>年度新计价办法</strong>
+          <ol>
+            <li>通过“导入 Excel”导入新年度整理表。</li>
+            <li>工具会保留旧年度版本，并生成年度迁移任务。</li>
+            <li>优先处理单价变化、新增指标、拆分指标和未列示口径。</li>
+            <li>不要在普通月度滚动里顺手改年度单价。</li>
+          </ol>
+        </article>
+        <article>
+          <strong>复核重点</strong>
+          <ul>
+            <li>万元口径和 /10000 是否与源字段一致。</li>
+            <li>IF 分支是否覆盖等于 0。</li>
+            <li>/12*n 与 /12*(n-1) 是否对应目标月份。</li>
+            <li>高风险指标必须人工复核后再采纳。</li>
+          </ul>
+        </article>
+        <article>
+          <strong>数据与留痕</strong>
+          <ul>
+            <li>数据保存在本机浏览器 localStorage，不上传服务器。</li>
+            <li>导出 Excel 会包含下月建议、公式含义、复核清单和年度迁移任务。</li>
+            <li>采纳建议后，可在“变更台账”和详情抽屉查看历史。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
   );
 }
 
