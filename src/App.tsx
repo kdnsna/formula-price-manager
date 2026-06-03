@@ -26,6 +26,7 @@ import {
   createRecordId,
   detectFormulaWarnings,
   getMetricTitle,
+  getFormulaUnitPriceRows,
   getNewConfigSyntheticId,
   getRecordForMetric,
   getRelatedMonthRules,
@@ -91,6 +92,26 @@ function Field({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function UnitPriceChips({ metric, compact = false }: { metric: MetricFormula; compact?: boolean }) {
+  if (!metric.formulaType.includes('积分')) {
+    return <span className="muted">非积分公式</span>;
+  }
+  const rows = getFormulaUnitPriceRows(metric);
+  if (!rows.length) {
+    return <span className="price-warning">需确认单价</span>;
+  }
+  return (
+    <div className={compact ? 'unit-price-chips compact' : 'unit-price-chips'}>
+      {rows.map((row) => (
+        <span className={row.source === '当前公式' ? 'unit-price-chip current' : 'unit-price-chip'} key={`${row.source}-${row.label}-${row.value}`}>
+          <small>{row.source}</small>
+          {row.label} {row.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function EmptyState({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="empty-state">
@@ -108,6 +129,7 @@ function App() {
   const [targetMonth, setTargetMonth] = useState(DEFAULT_TARGET_MONTH);
   const [search, setSearch] = useState('');
   const [boardFilter, setBoardFilter] = useState('全部');
+  const [formulaTypeFilter, setFormulaTypeFilter] = useState('全部');
   const [riskFilter, setRiskFilter] = useState('全部');
   const [statusFilter, setStatusFilter] = useState<'全部' | ChangeStatus>('全部');
   const [adjustmentFilter, setAdjustmentFilter] = useState('全部');
@@ -121,6 +143,10 @@ function App() {
   }, [state]);
 
   const boards = useMemo(() => Array.from(new Set(state.data.formulas.map((item) => item.board).filter(Boolean))).sort(), [state.data.formulas]);
+  const formulaTypes = useMemo(
+    () => Array.from(new Set(state.data.formulas.map((item) => item.formulaType).filter(Boolean))).sort(),
+    [state.data.formulas],
+  );
   const selectedMetric = useMemo(
     () => state.data.formulas.find((metric) => metric.metricId === selectedMetricId) ?? null,
     [selectedMetricId, state.data.formulas],
@@ -138,6 +164,7 @@ function App() {
     return state.data.formulas
       .filter((metric) => metricMatchesSearch(metric, search))
       .filter((metric) => boardFilter === '全部' || metric.board === boardFilter)
+      .filter((metric) => formulaTypeFilter === '全部' || metric.formulaType === formulaTypeFilter)
       .filter((metric) => riskFilter === '全部' || metric.riskLevel === riskFilter)
       .filter((metric) => adjustmentFilter === '全部' || metric.needsFormulaAdjustment.includes(adjustmentFilter))
       .filter((metric) => {
@@ -148,7 +175,7 @@ function App() {
       .sort((a, b) => {
         return riskRank(a.riskLevel) - riskRank(b.riskLevel) || Number(a.sequence) - Number(b.sequence);
       });
-  }, [state.data.formulas, search, boardFilter, riskFilter, statusFilter, adjustmentFilter, selectedMonth, recordMap]);
+  }, [state.data.formulas, search, boardFilter, formulaTypeFilter, riskFilter, statusFilter, adjustmentFilter, selectedMonth, recordMap]);
 
   const monthRecords = useMemo(() => state.records.filter((record) => record.month === selectedMonth), [state.records, selectedMonth]);
   const highRiskCount = state.data.formulas.filter((item) => item.riskLevel === '高').length;
@@ -414,6 +441,12 @@ function App() {
                     <option key={board}>{board}</option>
                   ))}
                 </select>
+                <select value={formulaTypeFilter} onChange={(event) => setFormulaTypeFilter(event.target.value)}>
+                  <option value="全部">全部公式性质</option>
+                  {formulaTypes.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </select>
                 <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)}>
                   <option>全部</option>
                   <option>高</option>
@@ -446,10 +479,31 @@ function App() {
                 <h2>公式库</h2>
                 <span>集中查看原公式、解释、风险和 2026 建议。</span>
               </div>
-              <label className="search-box">
-                <Search size={15} />
-                <input value={search} placeholder="搜索公式库" onChange={(event) => setSearch(event.target.value)} />
-              </label>
+              <div className="filter-row">
+                <label className="search-box">
+                  <Search size={15} />
+                  <input value={search} placeholder="搜索公式库" onChange={(event) => setSearch(event.target.value)} />
+                </label>
+                <select value={formulaTypeFilter} onChange={(event) => setFormulaTypeFilter(event.target.value)}>
+                  <option value="全部">全部公式性质</option>
+                  {formulaTypes.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </select>
+                <select value={boardFilter} onChange={(event) => setBoardFilter(event.target.value)}>
+                  <option value="全部">全部板块</option>
+                  {boards.map((board) => (
+                    <option key={board}>{board}</option>
+                  ))}
+                </select>
+                <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)}>
+                  <option value="全部">全部风险</option>
+                  <option>高</option>
+                  <option>中</option>
+                  <option>低</option>
+                  <option>无</option>
+                </select>
+              </div>
             </div>
             <MetricTable
               metrics={filteredMetrics}
@@ -854,6 +908,7 @@ function MetricTable({
             <th className="col-id">指标编号</th>
             <th>板块 / 小类</th>
             <th>原公式</th>
+            <th>单价</th>
             <th>风险</th>
             <th>是否调整</th>
             <th>2026 建议</th>
@@ -877,6 +932,9 @@ function MetricTable({
                 </td>
                 <td className="formula-cell" onClick={() => onOpen(metric)}>
                   <FormulaCode text={metric.originalFormula} compact />
+                </td>
+                <td className="unit-price-cell">
+                  <UnitPriceChips metric={metric} compact />
                 </td>
                 <td>
                   <RiskBadge level={metric.riskLevel} />
@@ -1014,6 +1072,8 @@ function MetricDrawer({
         {tab === 'price' && (
           <div className="drawer-section">
             <div className="price-grid">
+              <Field label="公式性质" value={metric.formulaType} />
+              <Field label="指标单价摘要" value={metric.formulaType.includes('积分') ? '见下方单价拆解' : '基础指标不单独列示积分单价'} />
               <Field label="2025 匹配指标" value={metric.match2025} />
               <Field label="2026 匹配指标" value={metric.match2026} />
               <Field label="2025 计价口径" value={metric.unit2025} />
@@ -1025,6 +1085,8 @@ function MetricDrawer({
               <Field label="2025 负增长" value={metric.negative2025} />
               <Field label="2026 负增长" value={metric.negative2026} />
             </div>
+            <label>积分公式单价拆解</label>
+            <UnitPriceChips metric={metric} />
             <label>25→26 单价变化结论</label>
             <p>{metric.priceChangeConclusion || relatedPrice?.changeDescription || '暂无变化说明'}</p>
             {relatedPrice && (

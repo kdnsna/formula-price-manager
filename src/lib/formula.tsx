@@ -83,3 +83,32 @@ export function detectFormulaWarnings(metric: MetricFormula) {
   if (metric.priceChangeConclusion.includes('→') || metric.formulaAdvice2026.includes('调')) warnings.push('涉及 25→26 单价切换');
   return Array.from(new Set(warnings));
 }
+
+function hasPriceValue(value: unknown) {
+  const text = textValue(value).trim();
+  return text !== '' && text !== '-';
+}
+
+export function getFormulaCoefficientPrices(metric: MetricFormula) {
+  const matches = Array.from(metric.originalFormula.matchAll(/\*(\d+(?:\.\d+)?)/g)).map((match) => match[1]);
+  return Array.from(new Set(matches.filter((value) => !['0', '1', '12', '10000'].includes(value))));
+}
+
+export function getFormulaUnitPriceRows(metric: MetricFormula) {
+  const rows: Array<{ label: string; value: string; source: string }> = [];
+  const coefficients = getFormulaCoefficientPrices(metric);
+  if (coefficients.length) {
+    rows.push({ label: '公式内系数', value: coefficients.join(' / '), source: '当前公式' });
+  }
+  if (hasPriceValue(metric.stock2026)) rows.push({ label: '存量/总量', value: textValue(metric.stock2026), source: '2026价表' });
+  if (hasPriceValue(metric.positive2026)) rows.push({ label: '正增长', value: textValue(metric.positive2026), source: '2026价表' });
+  if (hasPriceValue(metric.negative2026)) rows.push({ label: '负增长', value: textValue(metric.negative2026), source: '2026价表' });
+  return rows;
+}
+
+export function getFormulaUnitPriceSummary(metric: MetricFormula) {
+  if (!metric.formulaType.includes('积分')) return '非积分公式';
+  const rows = getFormulaUnitPriceRows(metric);
+  if (!rows.length) return '需确认单价';
+  return rows.map((row) => `${row.label}:${row.value}`).join('；');
+}

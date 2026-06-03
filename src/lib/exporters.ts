@@ -1,5 +1,6 @@
 import * as XLSX from '@e965/xlsx';
 import type { AnnualMigrationTask, AppState, MetricFormula, MonthlyChangeRecord, MonthlySuggestion } from '../types';
+import { getFormulaUnitPriceSummary } from './formula';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -62,6 +63,7 @@ function meaningToChinese(metric: MetricFormula) {
     板块: metric.board,
     公式性质: metric.formulaType,
     原公式: metric.originalFormula,
+    单价拆解: getFormulaUnitPriceSummary(metric),
     公式含义: metric.formulaMeaning ?? metric.formulaDescription,
     月度规则类型: metric.monthlyRuleType ?? '',
     需人工确认: (metric.manualCheckReasons ?? []).join('；'),
