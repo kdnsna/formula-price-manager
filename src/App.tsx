@@ -11,13 +11,14 @@ import {
   History,
   Info,
   ListChecks,
+  Sparkles,
   RotateCcw,
   Search,
   Settings2,
   Upload,
   X,
 } from 'lucide-react';
-import { CHANGE_STATUSES, DEFAULT_MONTH, EXPECTED_COUNTS, VIEWS } from './lib/constants';
+import { CHANGE_STATUSES, DEFAULT_MONTH, DEFAULT_TARGET_MONTH, EXPECTED_COUNTS, VIEWS } from './lib/constants';
 import { exportExcel, exportJson } from './lib/exporters';
 import { parseWorkbookFile } from './lib/excel';
 import {
@@ -34,8 +35,9 @@ import {
   riskRank,
   textValue,
 } from './lib/formula';
-import { createInitialState, loadState, resetState, saveState } from './lib/storage';
-import type { AppState, ChangeStatus, MetricFormula, MonthlyChangeRecord, NewConfigItem, ViewKey } from './types';
+import { generateMonthlySuggestions, nextMonth } from './lib/ruleEngine';
+import { createInitialState, createStateFromWorkbook, loadState, resetState, saveState } from './lib/storage';
+import type { AnnualMigrationTask, AppState, ChangeStatus, MetricFormula, MonthlyChangeRecord, MonthlySuggestion, NewConfigItem, ViewKey } from './types';
 
 type DrawerTab = 'formula' | 'price' | 'unit' | 'month' | 'history';
 
@@ -101,8 +103,9 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
 
 function App() {
   const [state, setState] = useState<AppState>(() => loadState());
-  const [activeView, setActiveView] = useState<ViewKey>('ledger');
+  const [activeView, setActiveView] = useState<ViewKey>('monthlyAssistant');
   const [selectedMonth, setSelectedMonth] = useState(DEFAULT_MONTH);
+  const [targetMonth, setTargetMonth] = useState(DEFAULT_TARGET_MONTH);
   const [search, setSearch] = useState('');
   const [boardFilter, setBoardFilter] = useState('全部');
   const [riskFilter, setRiskFilter] = useState('全部');
@@ -213,7 +216,7 @@ function App() {
     if (!file) return;
     try {
       const data = await parseWorkbookFile(file);
-      setState((current) => ({ ...current, data }));
+      setState((current) => createStateFromWorkbook(data, current));
       setImportMessage(`已导入 ${file.name}：主表 ${data.formulas.length} 条，单价对比 ${data.priceComparisons.length} 条，新配 ${data.newConfigItems.length} 条。`);
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : '导入失败，请检查 Excel 工作表名称。');
@@ -233,6 +236,57 @@ function App() {
     setDrawerTab(tab);
   }
 
+  function generateSuggestions() {
+    const suggestions = generateMonthlySuggestions(state.data, selectedMonth, targetMonth);
+    setState((current) => {
+      const remaining = current.monthlySuggestions.filter((item) => item.targetMonth !== targetMonth);
+      return { ...current, monthlySuggestions: [...remaining, ...suggestions] };
+    });
+    setImportMessage(`已生成 ${targetMonth} 下月公式建议 ${suggestions.length} 条。`);
+  }
+
+  function updateSuggestionStatus(id: string, status: MonthlySuggestion['status']) {
+    setState((current) => ({
+      ...current,
+      monthlySuggestions: current.monthlySuggestions.map((item) =>
+        item.id === id ? { ...item, status, acceptedAt: status === '已采纳' ? new Date().toISOString() : item.acceptedAt } : item,
+      ),
+    }));
+  }
+
+  function acceptSuggestion(suggestion: MonthlySuggestion) {
+    const metric = state.data.formulas.find((item) => item.metricId === suggestion.metricId);
+    if (!metric) return;
+    upsertRecord(
+      {
+        month: suggestion.targetMonth,
+        metricId: metric.metricId,
+        metricName: suggestion.metricName,
+        status: '已修改',
+        note: '',
+        beforeFormula: suggestion.originalFormula,
+        afterFormula: suggestion.suggestedFormula,
+        source: suggestion.changeSummary,
+        recordType: 'formula',
+      },
+      {
+        status: '已修改',
+        afterFormula: suggestion.suggestedFormula,
+        note: `已采纳月度建议：${suggestion.changeSummary}`,
+        source: suggestion.changeSummary,
+      },
+    );
+    updateSuggestionStatus(suggestion.id, '已采纳');
+    setSelectedMonth(suggestion.targetMonth);
+  }
+
+  function updateAnnualTask(taskId: string, status: AnnualMigrationTask['status']) {
+    setState((current) => ({
+      ...current,
+      annualMigrationTasks: current.annualMigrationTasks.map((task) => (task.id === taskId ? { ...task, status } : task)),
+    }));
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -246,9 +300,11 @@ function App() {
         <nav>
           {VIEWS.map((view) => (
             <button className={activeView === view.key ? 'nav-item active' : 'nav-item'} key={view.key} onClick={() => setActiveView(view.key)}>
+              {view.key === 'monthlyAssistant' && <Sparkles size={17} />}
               {view.key === 'ledger' && <ClipboardList size={17} />}
               {view.key === 'formulaLibrary' && <BookOpen size={17} />}
               {view.key === 'newConfig' && <ListChecks size={17} />}
+              {view.key === 'ruleVersions' && <History size={17} />}
               {view.key === 'ruleTemplates' && <Settings2 size={17} />}
               {view.key === 'io' && <Database size={17} />}
               <span>{view.label}</span>
@@ -266,13 +322,28 @@ function App() {
         <header className="topbar">
           <div>
             <h1>全员全产品计价公式管理台</h1>
-            <p>按月登记公式变更，追踪 25→26 单价切换、单位口径和新增配置。</p>
+            <p>按月生成下月公式建议，年度新办法按版本沉淀迁移任务。</p>
           </div>
           <div className="top-actions">
             <label className="month-control">
               <span>维护月份</span>
-              <input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} />
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(event) => {
+                  setSelectedMonth(event.target.value);
+                  setTargetMonth(nextMonth(event.target.value));
+                }}
+              />
             </label>
+            <label className="month-control">
+              <span>目标月份</span>
+              <input type="month" value={targetMonth} onChange={(event) => setTargetMonth(event.target.value)} />
+            </label>
+            <button className="button primary" onClick={generateSuggestions}>
+              <Sparkles size={16} />
+              生成下月建议
+            </button>
             <button className="button primary" onClick={() => fileInputRef.current?.click()}>
               <Upload size={16} />
               导入 Excel
@@ -307,6 +378,21 @@ function App() {
             <small>本月记录 {monthRecords.length} 条</small>
           </div>
         </section>
+
+        {activeView === 'monthlyAssistant' && (
+          <MonthlyAssistant
+            suggestions={state.monthlySuggestions.filter((item) => item.targetMonth === targetMonth)}
+            targetMonth={targetMonth}
+            sourceMonth={selectedMonth}
+            onGenerate={generateSuggestions}
+            onAccept={acceptSuggestion}
+            onStatusChange={updateSuggestionStatus}
+            onOpenMetric={(metricId) => {
+              setSelectedMetricId(metricId);
+              setDrawerTab('formula');
+            }}
+          />
+        )}
 
         {activeView === 'ledger' && (
           <section className="panel">
@@ -372,6 +458,10 @@ function App() {
               libraryMode
             />
           </section>
+        )}
+
+        {activeView === 'ruleVersions' && (
+          <RuleVersionsPanel state={state} onUpdateAnnualTask={updateAnnualTask} />
         )}
 
         {activeView === 'newConfig' && (
@@ -504,6 +594,184 @@ function CountCheck({ label, actual, expected }: { label: string; actual: number
         {actual}/{expected}
       </strong>
     </div>
+  );
+}
+
+function MonthlyAssistant({
+  suggestions,
+  targetMonth,
+  sourceMonth,
+  onGenerate,
+  onAccept,
+  onStatusChange,
+  onOpenMetric,
+}: {
+  suggestions: MonthlySuggestion[];
+  targetMonth: string;
+  sourceMonth: string;
+  onGenerate: () => void;
+  onAccept: (suggestion: MonthlySuggestion) => void;
+  onStatusChange: (id: string, status: MonthlySuggestion['status']) => void;
+  onOpenMetric: (metricId: string) => void;
+}) {
+  const acceptedCount = suggestions.filter((item) => item.status === '已采纳').length;
+  const warningCount = suggestions.filter((item) => item.riskWarnings.length > 0 || item.manualCheckReasons.length > 0).length;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>月度公式助手</h2>
+          <span>
+            从 {sourceMonth} 生成 {targetMonth} 配置建议，只滚动月份和统计时间，不改年度单价。
+          </span>
+        </div>
+        <button className="button primary" onClick={onGenerate}>
+          <Sparkles size={16} />
+          生成/刷新建议
+        </button>
+      </div>
+      <div className="assistant-summary">
+        <div>
+          <span>建议条数</span>
+          <strong>{suggestions.length}</strong>
+        </div>
+        <div>
+          <span>需人工复核</span>
+          <strong>{warningCount}</strong>
+        </div>
+        <div>
+          <span>已采纳</span>
+          <strong>{acceptedCount}</strong>
+        </div>
+      </div>
+      {suggestions.length === 0 ? (
+        <EmptyState title="还没有下月公式建议" detail="点击“生成/刷新建议”，工具会基于当前公式批量生成目标月份草案。" />
+      ) : (
+        <div className="suggestion-list">
+          {suggestions.map((suggestion) => (
+            <article className="suggestion-card" key={suggestion.id}>
+              <div className="suggestion-head">
+                <div>
+                  <button className="link-button" onClick={() => onOpenMetric(suggestion.metricId)}>
+                    {suggestion.metricId}
+                  </button>
+                  <strong>{suggestion.metricName}</strong>
+                  <span>{suggestion.changeSummary}</span>
+                </div>
+                <div className="suggestion-actions">
+                  <select value={suggestion.status} onChange={(event) => onStatusChange(suggestion.id, event.target.value as MonthlySuggestion['status'])}>
+                    <option>待复核</option>
+                    <option>已采纳</option>
+                    <option>已忽略</option>
+                  </select>
+                  <button className="button primary" onClick={() => onAccept(suggestion)}>
+                    <CheckCircle2 size={15} />
+                    采纳到台账
+                  </button>
+                </div>
+              </div>
+              <div className="suggestion-formulas">
+                <div>
+                  <label>原公式</label>
+                  <FormulaCode text={suggestion.originalFormula} compact />
+                </div>
+                <div>
+                  <label>建议公式</label>
+                  <FormulaCode text={suggestion.suggestedFormula} compact />
+                </div>
+              </div>
+              <p className="meaning-text">{suggestion.formulaMeaning}</p>
+              {(suggestion.manualCheckReasons.length > 0 || suggestion.riskWarnings.length > 0) && (
+                <div className="check-chip-row">
+                  {Array.from(new Set([...suggestion.manualCheckReasons, ...suggestion.riskWarnings])).map((item) => (
+                    <span key={item}>{item}</span>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RuleVersionsPanel({
+  state,
+  onUpdateAnnualTask,
+}: {
+  state: AppState;
+  onUpdateAnnualTask: (taskId: string, status: AnnualMigrationTask['status']) => void;
+}) {
+  const tasks = state.annualMigrationTasks;
+  const highCount = tasks.filter((task) => task.priority === '高').length;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>年度规则版本库</h2>
+          <span>新计价办法按年度追加版本，年度迁移任务用于处理单价变化、新增、拆分和口径确认。</span>
+        </div>
+      </div>
+      <div className="version-grid">
+        {state.ruleVersions.map((version) => (
+          <div className={version.isActive ? 'version-card active' : 'version-card'} key={version.id}>
+            <span>{version.isActive ? '当前生效' : '历史版本'}</span>
+            <strong>{version.name}</strong>
+            <small>{version.sourceName}</small>
+            <p>
+              公式 {version.formulaCount} 条，价表 {version.priceRowCount} 条，导入于 {new Date(version.importedAt).toLocaleString('zh-CN')}。
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="panel-subhead">
+        <div>
+          <h3>年度迁移任务</h3>
+          <span>
+            共 {tasks.length} 条，其中高优先级 {highCount} 条。
+          </span>
+        </div>
+      </div>
+      <div className="annual-task-table">
+        <table className="data-table compact-table">
+          <thead>
+            <tr>
+              <th>年度</th>
+              <th>指标/事项</th>
+              <th>变化类型</th>
+              <th>优先级</th>
+              <th>处理建议</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((task) => (
+              <tr key={task.id}>
+                <td>{task.year}</td>
+                <td>
+                  <strong>{task.metricName}</strong>
+                  <span className="line-detail">{task.metricId}</span>
+                </td>
+                <td>{task.changeType}</td>
+                <td>
+                  <RiskBadge level={task.priority === '高' ? '高' : task.priority === '低' ? '低' : '中'} />
+                </td>
+                <td className="advice-cell">{task.advice || task.source}</td>
+                <td>
+                  <select value={task.status} onChange={(event) => onUpdateAnnualTask(task.id, event.target.value as AnnualMigrationTask['status'])}>
+                    <option>待处理</option>
+                    <option>已确认</option>
+                    <option>已配置</option>
+                    <option>暂缓</option>
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -655,8 +923,18 @@ function MetricDrawer({
           <div className="drawer-section">
             <label>原公式</label>
             <FormulaCode text={metric.originalFormula} />
-            <label>公式解释</label>
-            <p>{metric.formulaDescription || '暂无解释'}</p>
+            <label>规则引擎解释</label>
+            <p>{metric.formulaMeaning || metric.formulaDescription || '暂无解释'}</p>
+            <div className="analysis-grid">
+              <Field label="月度规则类型" value={metric.monthlyRuleType || '未识别'} />
+              <Field label="需人工确认" value={(metric.manualCheckReasons ?? []).join('；') || '暂无'} />
+            </div>
+            {metric.formulaDescription && (
+              <>
+                <label>原始公式描述</label>
+                <p>{metric.formulaDescription}</p>
+              </>
+            )}
             <label>2026 公式/配置建议</label>
             <p>{metric.formulaAdvice2026 || '暂无建议'}</p>
             <div className="form-grid">

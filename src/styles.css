@@ -871,6 +871,177 @@ textarea {
   color: #c2410c;
 }
 
+.assistant-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  border-bottom: 1px solid #edf0f5;
+  padding: 12px 14px;
+}
+
+.assistant-summary > div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dbe3ef;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.assistant-summary span,
+.suggestion-head span,
+.version-card span,
+.version-card small,
+.panel-subhead span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.assistant-summary strong {
+  font-size: 22px;
+}
+
+.suggestion-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.suggestion-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe3ef;
+  border-radius: 6px;
+  background: #fff;
+  padding: 12px;
+}
+
+.suggestion-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.suggestion-head > div:first-child,
+.suggestion-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.link-button {
+  border: 0;
+  background: transparent;
+  color: #0f5fb8;
+  font-weight: 800;
+  padding: 0;
+}
+
+.suggestion-formulas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.suggestion-formulas > div {
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+  background: #fbfdff;
+  padding: 9px;
+}
+
+.suggestion-formulas label {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.meaning-text {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.check-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.check-chip-row span {
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 8px;
+}
+
+.version-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.version-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dbe3ef;
+  border-radius: 6px;
+  background: #fff;
+  padding: 12px;
+}
+
+.version-card.active {
+  border-left: 4px solid #0f5fb8;
+}
+
+.version-card strong {
+  font-size: 15px;
+}
+
+.version-card p {
+  margin: 0;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.panel-subhead {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid #edf0f5;
+  border-bottom: 1px solid #edf0f5;
+  background: #f8fafc;
+  padding: 10px 14px;
+}
+
+.panel-subhead h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.annual-task-table {
+  overflow: auto;
+}
+
+.compact-table {
+  min-width: 980px;
+}
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -910,6 +1081,7 @@ textarea {
   }
 
   .summary-grid,
+  .assistant-summary,
   .io-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -967,11 +1139,15 @@ textarea {
   }
 
   .summary-grid,
+  .assistant-summary,
   .rule-grid,
   .io-grid,
   .price-grid,
   .form-grid,
-  .new-config-row {
+  .new-config-row,
+  .suggestion-formulas,
+  .version-grid,
+  .analysis-grid {
     grid-template-columns: 1fr;
   }
 

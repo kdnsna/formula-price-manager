@@ -1,5 +1,5 @@
 import * as XLSX from '@e965/xlsx';
-import type { AppState, MonthlyChangeRecord } from '../types';
+import type { AnnualMigrationTask, AppState, MetricFormula, MonthlyChangeRecord, MonthlySuggestion } from '../types';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -37,9 +37,70 @@ function recordToChinese(record: MonthlyChangeRecord) {
   };
 }
 
+function suggestionToChinese(suggestion: MonthlySuggestion) {
+  return {
+    来源月份: suggestion.sourceMonth,
+    目标月份: suggestion.targetMonth,
+    指标编号: suggestion.metricId,
+    指标名称: suggestion.metricName,
+    原公式: suggestion.originalFormula,
+    建议公式: suggestion.suggestedFormula,
+    修改点摘要: suggestion.changeSummary,
+    公式含义: suggestion.formulaMeaning,
+    需人工确认: suggestion.manualCheckReasons.join('；'),
+    风险提示: suggestion.riskWarnings.join('；'),
+    状态: suggestion.status,
+    生成时间: suggestion.createdAt,
+    采纳时间: suggestion.acceptedAt ?? '',
+  };
+}
+
+function meaningToChinese(metric: MetricFormula) {
+  return {
+    指标编号: metric.metricId,
+    指标名称: `${metric.category} / ${metric.detail}`,
+    板块: metric.board,
+    公式性质: metric.formulaType,
+    原公式: metric.originalFormula,
+    公式含义: metric.formulaMeaning ?? metric.formulaDescription,
+    月度规则类型: metric.monthlyRuleType ?? '',
+    需人工确认: (metric.manualCheckReasons ?? []).join('；'),
+    单位判断: metric.currentUnitJudgement,
+    单位与口径关注: metric.unitAttention,
+  };
+}
+
+function reviewChecklistToChinese(suggestion: MonthlySuggestion) {
+  return {
+    目标月份: suggestion.targetMonth,
+    指标编号: suggestion.metricId,
+    指标名称: suggestion.metricName,
+    复核状态: suggestion.status,
+    检查事项: [...suggestion.manualCheckReasons, ...suggestion.riskWarnings].join('；') || '检查建议公式与目标月份是否一致',
+    建议公式: suggestion.suggestedFormula,
+  };
+}
+
+function annualTaskToChinese(task: AnnualMigrationTask) {
+  return {
+    年度: task.year,
+    指标编号: task.metricId,
+    指标名称: task.metricName,
+    变化类型: task.changeType,
+    优先级: task.priority,
+    处理建议: task.advice,
+    来源: task.source,
+    状态: task.status,
+  };
+}
+
 export function exportExcel(state: AppState) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.records.map(recordToChinese)), '月度变更记录');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.monthlySuggestions.map(suggestionToChinese)), '下月公式建议');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.data.formulas.map(meaningToChinese)), '公式含义说明');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.monthlySuggestions.map(reviewChecklistToChinese)), '月度复核清单');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.annualMigrationTasks.map(annualTaskToChinese)), '年度迁移任务');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.data.formulas.map((item) => item.raw)), '公式切换总表');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.data.priceComparisons.map((item) => item.raw)), '25-26单价对比');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.data.newConfigItems.map((item) => item.raw)), '2026新增需新配');
